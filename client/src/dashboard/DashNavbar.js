@@ -1,6 +1,5 @@
 import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import DashHome from "./DashHome";
 
 export default function Navbar() {
   const [open, setOpen] = useState(false);
