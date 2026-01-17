@@ -1,14 +1,12 @@
- import React, { useState, useRef, useEffect } from "react";
+ 
+import React, { useState, useRef, useEffect } from "react";
 import { io } from "socket.io-client";
 import axios from "axios";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
-const socket = io(BACKEND_URL);
 
 const ICE = {
-  iceServers: [
-    { urls: ["stun:stun.l.google.com:19302"] }
-  ]
+  iceServers: [{ urls: ["stun:stun.l.google.com:19302"] }]
 };
 
 export default function VideoCall() {
@@ -22,26 +20,34 @@ export default function VideoCall() {
   const localVideoRef = useRef(null);
   const remoteVideoRef = useRef(null);
   const pcRef = useRef(null);
+  const socketRef = useRef(null);
 
+  // fetch profile
   useEffect(() => {
     const token = localStorage.getItem("token");
     if (!token) return;
-    axios.get(`${BACKEND_URL}/profile`, {
-      headers: { Authorization: `Bearer ${token}` }
-    })
-    .then(res => {
-      if (res.data?.userName) {
-        setUserName(res.data.userName);
-        localStorage.setItem("userName", res.data.userName);
-      }
-    })
-    .catch(err => console.error("Profile fetch error:", err));
+    axios
+      .get(`${BACKEND_URL}/profile`, {
+        headers: { Authorization: `Bearer ${token}` }
+      })
+      .then(res => {
+        if (res.data?.userName) {
+          setUserName(res.data.userName);
+          localStorage.setItem("userName", res.data.userName);
+        }
+      })
+      .catch(err => console.error("Profile fetch error:", err));
   }, []);
 
+  // join logic
   useEffect(() => {
     if (!joined) return;
 
+    const socket = io(BACKEND_URL);
+    socketRef.current = socket;
+
     let stream;
+
     async function start() {
       try {
         stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
@@ -79,7 +85,7 @@ export default function VideoCall() {
           }
         };
 
-        socket.emit("join-room", { roomId: room, userName, password });
+        socket.emit("join-room", { roomId: room.trim(), userName, password: password.trim() });
         setStatus("Joining room…");
       } catch (err) {
         console.error("getUserMedia error:", err);
@@ -88,6 +94,7 @@ export default function VideoCall() {
     }
     start();
 
+    // socket listeners
     socket.on("join-error", (msg) => {
       setError(msg.message || msg);
       setStatus("Error");
@@ -113,16 +120,16 @@ export default function VideoCall() {
       const pc = pcRef.current;
       try {
         if (payload.offer) {
-          await pc.setRemoteDescription(payload.offer);
+          await pc.setRemoteDescription(new RTCSessionDescription(payload.offer));
           const answer = await pc.createAnswer();
           await pc.setLocalDescription(answer);
           socket.emit("signal", { room, payload: { answer }, targetId: from });
           setStatus("Received offer, sent answer");
         } else if (payload.answer) {
-          await pc.setRemoteDescription(payload.answer);
+          await pc.setRemoteDescription(new RTCSessionDescription(payload.answer));
           setStatus("Connected");
         } else if (payload.candidate) {
-          await pc.addIceCandidate(payload.candidate);
+          await pc.addIceCandidate(new RTCIceCandidate(payload.candidate));
         }
       } catch (e) {
         console.warn("Signal handling error:", e);
@@ -136,14 +143,11 @@ export default function VideoCall() {
 
     return () => {
       socket.emit("leave-room", { roomId: room });
-      socket.off("join-error");
-      socket.off("joined");
-      socket.off("peer-joined");
-      socket.off("signal");
-      socket.off("peer-left");
+      socket.off();
+      socket.disconnect();
       if (pcRef.current) pcRef.current.close();
     };
-  }, [joined]);
+  }, [joined, room, password, userName]);
 
   return (
     <div style={styles.container}>
@@ -151,11 +155,22 @@ export default function VideoCall() {
         <div style={styles.joinCard}>
           <h2 style={styles.title}>📹 Join Video Call</h2>
           <div style={{ display: "grid", gap: 12 }}>
-            <input value={room} onChange={e => setRoom(e.target.value)} placeholder="Room name" style={styles.input} />
-            <input value={password} onChange={e => setPassword(e.target.value)} placeholder="Password" type="password" style={styles.input} />
+            <input
+              value={room}
+              onChange={e => setRoom(e.target.value)}
+              placeholder="Room name"
+              style={styles.input}
+            />
+            <input
+              value={password}
+              onChange={e => setPassword(e.target.value)}
+              placeholder="Password"
+              type="password"
+              style={styles.input}
+            />
             <button
               onClick={() => {
-                if (!room || !password) return setError("Room and password required");
+                if (!room.trim() || !password.trim()) return setError("Room and password required");
                 setError("");
                 setJoined(true);
               }}
@@ -168,13 +183,9 @@ export default function VideoCall() {
         </div>
       ) : (
         <>
-          {/* Receiver video fullscreen */}
           <video ref={remoteVideoRef} autoPlay playsInline style={styles.remoteVideo} />
-          {/* Sender video overlay */}
           <video ref={localVideoRef} autoPlay playsInline muted style={styles.localVideo} />
-          {/* Status bar */}
           <div style={styles.statusBar}>{status}</div>
-          {/* Leave button */}
           <button onClick={() => setJoined(false)} style={styles.leaveButton}>❌</button>
         </>
       )}
@@ -242,7 +253,7 @@ const styles = {
     right: 20,
     width: "30vw",
     maxWidth: "140px",
-    aspectRatio: "3/4",
+    height: "auto",
     borderRadius: 12,
     border: "2px solid #2a5298",
     objectFit: "cover",
@@ -260,7 +271,11 @@ const styles = {
     borderRadius: 8,
     fontSize: "clamp(12px, 3vw, 14px)",
     textAlign: "center",
-    minWidth: "120px"
+    minWidth: "120px",
+    maxWidth: "80%",   // overflow control
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis"
   },
   leaveButton: {
     position: "absolute",

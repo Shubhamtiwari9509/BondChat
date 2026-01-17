@@ -8,7 +8,6 @@ import Signup from "./components/Signup";
 import About from "./components/About";
 import Features from "./components/Features";
 import Footer from "./components/Footer";
-import Dashboard from "./dashboard/Dashboard";
 import ChatPage from "./dashboard/Msg";
 import VideoPage from "./dashboard/VideoCall";
 import DashNavbar from "./dashboard/DashNavbar";
