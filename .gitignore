@@ -1,0 +1,13 @@
+# Node modules ignore
+backend/node_modules/
+client/node_modules/
+
+# Logs
+*.log
+
+# Build outputs
+backend/dist/
+client/build/
+
+# Environment files
+.env
